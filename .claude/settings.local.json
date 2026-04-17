@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__unity-mcp__Unity_ManageScene",
+      "mcp__unity-mcp__Unity_FindProjectAssets",
+      "mcp__unity-mcp__Unity_FindInFile",
+      "mcp__unity-mcp__Unity_Grep",
+      "mcp__unity-mcp__Unity_ListResources",
+      "mcp__unity-mcp__Unity_ManageScript",
+      "mcp__unity-mcp__Unity_ManageGameObject",
+      "mcp__unity-mcp__Unity_RunCommand",
+      "mcp__unity-mcp__Unity_GetSha",
+      "mcp__unity-mcp__Unity_ManageMenuItem"
+    ]
+  }
+}
