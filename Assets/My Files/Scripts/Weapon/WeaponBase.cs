@@ -8,28 +8,27 @@ namespace VRWeaponSimulator
     {
         [Header("Settings")]
         public string weaponName;
-        public List<PartType> requiredPartsForFiring;
+        [Tooltip("The parts required for the weapon to be considered fully assembled.")]
+        public List<PartType> requiredPartsForAssembly;
 
-        [Header("State")]
+        [Header("Assembly State")]
         public List<WeaponPart> attachedParts = new List<WeaponPart>();
+        public bool isFullyAssembled = false;
+        public float totalWeight = 0f;
         
         [Header("Events")]
-        public UnityEvent onStatsUpdated;
+        public UnityEvent<WeaponPart> onPartAttached;
+        public UnityEvent<WeaponPart> onPartDetached;
         public UnityEvent onWeaponFullyAssembled;
-        public UnityEvent onWeaponDisassembled;
-
-        [Header("Calculated Stats")]
-        public float currentDamage = 10f;
-        public float currentRecoil = 1.0f;
-        public float currentAccuracy = 0.8f;
-        public bool isReadyToFire = false;
+        public UnityEvent onWeaponIncomplete;
 
         public void RegisterPart(WeaponPart part)
         {
             if (!attachedParts.Contains(part))
             {
                 attachedParts.Add(part);
-                CalculateStats();
+                onPartAttached?.Invoke(part);
+                UpdateAssemblyState();
             }
         }
 
@@ -38,46 +37,46 @@ namespace VRWeaponSimulator
             if (attachedParts.Contains(part))
             {
                 attachedParts.Remove(part);
-                CalculateStats();
+                onPartDetached?.Invoke(part);
+                UpdateAssemblyState();
             }
         }
 
-        private void CalculateStats()
+        private void UpdateAssemblyState()
         {
-            // Reset to defaults (could be from a BaseWeaponData SO too)
-            currentDamage = 10f;
-            currentRecoil = 1.0f;
-            currentAccuracy = 0.8f;
-
+            totalWeight = 0f;
             HashSet<PartType> currentPartTypes = new HashSet<PartType>();
 
             foreach (var part in attachedParts)
             {
                 if (part.data == null) continue;
-
-                currentDamage *= part.data.damageModifier;
-                currentRecoil *= part.data.recoilModifier;
-                currentAccuracy *= part.data.accuracyModifier;
                 
+                totalWeight += part.data.weight;
                 currentPartTypes.Add(part.data.type);
             }
 
-            // Check firing readiness
-            bool wasReady = isReadyToFire;
-            isReadyToFire = true;
-            foreach (var requiredType in requiredPartsForFiring)
+            bool wasFullyAssembled = isFullyAssembled;
+            isFullyAssembled = true;
+            
+            foreach (var requiredType in requiredPartsForAssembly)
             {
                 if (!currentPartTypes.Contains(requiredType))
                 {
-                    isReadyToFire = false;
+                    isFullyAssembled = false;
                     break;
                 }
             }
 
-            if (!wasReady && isReadyToFire) onWeaponFullyAssembled?.Invoke();
-            if (wasReady && !isReadyToFire) onWeaponDisassembled?.Invoke();
-
-            onStatsUpdated?.Invoke();
+            if (!wasFullyAssembled && isFullyAssembled) 
+            {
+                onWeaponFullyAssembled?.Invoke();
+                Debug.Log($"[{weaponName}] is fully assembled!");
+            }
+            else if (wasFullyAssembled && !isFullyAssembled) 
+            {
+                onWeaponIncomplete?.Invoke();
+                Debug.Log($"[{weaponName}] is no longer fully assembled.");
+            }
         }
     }
 }

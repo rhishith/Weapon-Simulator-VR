@@ -20,14 +20,9 @@ namespace VRWeaponSimulator
         public string partName;
         public PartType type;
 
-        [Header("Stat Modifiers")]
-        public float damageModifier = 1.0f;
-        public float recoilModifier = 1.0f; // Lower is better
-        public float accuracyModifier = 1.0f; // Higher is better
-        public float weightModifier = 1.0f;
-        
-        [Header("Functional Config")]
-        public int ammoCapacityBonus = 0;
-        public bool isCriticalForFiring = false; // Is this part required to fire?
+        [Header("Simulator Info")]
+        [TextArea]
+        public string description;
+        public float weight = 1.0f;
     }
 }

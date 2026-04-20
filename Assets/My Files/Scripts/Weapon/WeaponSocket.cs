@@ -9,6 +9,10 @@ namespace VRWeaponSimulator
         public WeaponBase weaponBase;
         public PartType acceptedPartType;
 
+        [Header("Visuals")]
+        [Tooltip("The translucent mesh that shows where the part should go. It will be hidden when a part is attached.")]
+        public GameObject ghostMesh;
+
         protected override void OnEnable()
         {
             base.OnEnable();
@@ -41,6 +45,11 @@ namespace VRWeaponSimulator
             {
                 weaponBase.RegisterPart(part);
             }
+
+            if (ghostMesh != null)
+            {
+                ghostMesh.SetActive(false);
+            }
         }
 
         private void OnPartDetached(SelectExitEventArgs args)
@@ -49,6 +58,11 @@ namespace VRWeaponSimulator
             if (part != null && weaponBase != null)
             {
                 weaponBase.UnregisterPart(part);
+            }
+
+            if (ghostMesh != null)
+            {
+                ghostMesh.SetActive(true);
             }
         }
     }
