@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.XR.Interaction.Toolkit;
 
@@ -5,51 +6,82 @@ namespace VRWeaponSimulator
 {
     public class WeaponSocket : UnityEngine.XR.Interaction.Toolkit.Interactors.XRSocketInteractor
     {
-        [Header("Weapon Integration")]
+        [Header("Weapon")]
         public WeaponBase weaponBase;
-        public PartType acceptedPartType;
 
-        [Header("Visuals")]
-        [Tooltip("Auto-resolved by finding a child inside 'Ghost Visuals' that shares this socket's exact name. e.g. Socket 'AR_B_Mag' finds Ghost 'AR_B_Mag'. Manual assignment overrides auto-resolve.")]
-        public GameObject ghostMesh;
+        [Header("Dependencies (Optional)")]
+        public List<WeaponSocket> requiredSockets = new();
 
-        private const string GhostVisualsName = "Ghost Visuals";
+        [Header("Auto References")]
+        private WeaponPart expectedPart;
+        private GameObject ghostMesh;
+
+        private const string PartsRootName = "Parts";
+        private const string GhostRootName = "Ghost Visuals";
 
         protected override void Awake()
         {
             base.Awake();
-            AutoResolveGhostMesh();
+
+if (weaponBase == null)
+{
+    weaponBase = GetComponentInParent<WeaponBase>();
+
+    if (weaponBase == null)
+    {
+        Debug.LogError($"[WeaponSocket] {name} could not find WeaponBase in parents!", this);
+        return;
+    }
+}
+
+            AutoResolvePart();
+            AutoResolveGhost();
         }
 
-        private void AutoResolveGhostMesh()
+        // 🔥 AUTO FIND PART
+        private void AutoResolvePart()
         {
-            // Skip if already manually assigned in the Inspector
-            if (ghostMesh != null) return;
+            Transform partsRoot = weaponBase.transform.Find(PartsRootName);
 
-            if (weaponBase == null)
+            if (partsRoot == null)
             {
-                Debug.LogWarning($"[WeaponSocket] '{name}': weaponBase is not assigned — cannot auto-resolve ghost mesh.", this);
+                Debug.LogError($"[WeaponSocket] '{name}' Parts root not found!", this);
                 return;
             }
 
-            Transform ghostVisualsRoot = weaponBase.transform.Find(GhostVisualsName);
-            if (ghostVisualsRoot == null)
-            {
-                Debug.LogWarning($"[WeaponSocket] '{name}': No child named '{GhostVisualsName}' found under '{weaponBase.name}'.", this);
-                return;
-            }
+            Transform found = partsRoot.Find(name);
 
-            // Socket 'AR_B_Mag' looks for a child named 'AR_B_Mag' inside Ghost Visuals
-            Transform found = ghostVisualsRoot.Find(gameObject.name);
             if (found == null)
             {
-                Debug.LogWarning($"[WeaponSocket] '{name}': Could not find a matching ghost named '{gameObject.name}' inside '{GhostVisualsName}'. " +
-                                 $"Make sure the ghost child has the exact same name as this socket.", this);
+                Debug.LogError($"[WeaponSocket] '{name}' matching part not found in Parts!", this);
                 return;
             }
 
-            ghostMesh = found.gameObject;
-            Debug.Log($"[WeaponSocket] '{name}': Auto-resolved ghost mesh -> '{ghostMesh.name}' inside '{GhostVisualsName}'.");
+            expectedPart = found.GetComponent<WeaponPart>();
+
+            if (expectedPart == null)
+            {
+                Debug.LogError($"[WeaponSocket] '{name}' has no WeaponPart component!", this);
+            }
+        }
+
+        // 🔥 AUTO FIND GHOST
+        private void AutoResolveGhost()
+        {
+            Transform ghostRoot = weaponBase.transform.Find(GhostRootName);
+
+            if (ghostRoot == null)
+            {
+                Debug.LogWarning($"[WeaponSocket] '{name}' Ghost root not found.", this);
+                return;
+            }
+
+            Transform found = ghostRoot.Find(name);
+
+            if (found != null)
+                ghostMesh = found.gameObject;
+            else
+                Debug.LogWarning($"[WeaponSocket] '{name}' ghost not found.", this);
         }
 
         protected override void OnEnable()
@@ -70,17 +102,37 @@ namespace VRWeaponSimulator
         {
             if (!base.CanSelect(interactable)) return false;
 
+            if (expectedPart == null) return false;
+
             var part = interactable.transform.GetComponent<WeaponPart>();
             if (part == null) return false;
 
-            return part.data.type == acceptedPartType;
+            // 🔥 EXACT OBJECT MATCH
+            if (part != expectedPart)
+                return false;
+
+            // 🔥 Dependency check
+            foreach (var socket in requiredSockets)
+            {
+                if (socket == null) continue;
+                if (!socket.hasSelection)
+                    return false;
+            }
+
+            return true;
         }
 
         private void OnPartAttached(SelectEnterEventArgs args)
         {
             var part = args.interactableObject.transform.GetComponent<WeaponPart>();
+
             if (part != null && weaponBase != null)
                 weaponBase.RegisterPart(part);
+
+            // 🔥 Perfect snap
+            var t = args.interactableObject.transform;
+            t.localPosition = Vector3.zero;
+            t.localRotation = Quaternion.identity;
 
             if (ghostMesh != null)
                 ghostMesh.SetActive(false);
@@ -89,6 +141,7 @@ namespace VRWeaponSimulator
         private void OnPartDetached(SelectExitEventArgs args)
         {
             var part = args.interactableObject.transform.GetComponent<WeaponPart>();
+
             if (part != null && weaponBase != null)
                 weaponBase.UnregisterPart(part);
 
