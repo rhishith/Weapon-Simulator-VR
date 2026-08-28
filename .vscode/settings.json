@@ -67,8 +67,5 @@
         "*.sln": "*.csproj",
         "*.slnx": "*.csproj"
     },
-    "dotnet.defaultSolution": "Weapon-Simulator-VR.slnx",
-    "dotrush.roslyn.projectOrSolutionFiles": [
-        "d:\\Unity Learning\\Weapon-Simulator-VR\\Weapon Simulator VR.slnx"
-    ]
+    "dotnet.defaultSolution": "Weapon-Simulator-VR.slnx"
 }
