@@ -1,20 +1,23 @@
 using UnityEngine;
-
+using UnityEngine.XR.Interaction.Toolkit.Interactables;
 
 namespace VRWeaponSimulator
 {
-    [RequireComponent(typeof(UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable))]
+    [RequireComponent(typeof(XRGrabInteractable))]
     public class WeaponPart : MonoBehaviour
     {
         public PartData data;
-        
-        private UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable _grabInteractable;
+
+        private XRGrabInteractable _grab;
 
         private void Awake()
         {
-            _grabInteractable = GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>();
-        }
+            _grab = GetComponent<XRGrabInteractable>();
 
-        // Potential for future expansion: Haptics when grabbing, visual highlights, etc.
+            if (data == null)
+            {
+                Debug.LogError($"[WeaponPart] {name} has no PartData assigned!", this);
+            }
+        }
     }
 }
