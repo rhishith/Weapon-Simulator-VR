@@ -1,39 +1,49 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace VRWeaponSimulator
 {
     /// <summary>
-    /// Attach this to any GameObject (e.g. your "Ghost Visuals" parent under each weapon).
-    /// It listens to WeaponBase assembly events and shows/hides the ghost accordingly.
+    /// Manages ghost visuals for weapon assembly.
+    /// Supports proximity-based fading so ghost hints only appear when the player
+    /// is actively holding the matching part near its target socket.
     /// </summary>
     public class WeaponGhostVisualController : MonoBehaviour
     {
         [Header("References")]
-        [Tooltip("The WeaponBase this ghost belongs to.")]
         public WeaponBase weaponBase;
-
-        [Tooltip("The root GameObject of the ghost visuals to show/hide. Defaults to this GameObject if left empty.")]
         public GameObject ghostRoot;
+
+        [Header("Proximity Settings")]
+        [Tooltip("If true, detached ghosts only illuminate when the player holds the matching part near the weapon.")]
+        public bool useProximityFading = true;
+
+        [Tooltip("Distance in meters within which the ghost will appear when holding the matching part.")]
+        public float proximityDistance = 0.5f;
+
+        [Header("Visual Options")]
+        [Tooltip("If true, all ghosts show continuously when weapon is incomplete.")]
+        public bool showAllGhostsWhenIncomplete = false;
+
+        private float _checkTimer = 0f;
+        private const float CheckInterval = 0.05f; // 20Hz update is plenty for distance checks
 
         private void Awake()
         {
-            // Default ghostRoot to this GameObject if not assigned
             if (ghostRoot == null)
                 ghostRoot = gameObject;
+
+            if (weaponBase == null)
+                weaponBase = GetComponentInParent<WeaponBase>();
         }
 
         private void OnEnable()
         {
-            if (weaponBase == null)
-            {
-                Debug.LogWarning($"[WeaponGhostVisualController] No WeaponBase assigned on {gameObject.name}.", this);
-                return;
-            }
+            if (weaponBase == null) return;
 
-            weaponBase.onWeaponFullyAssembled.AddListener(HideGhost);
-            weaponBase.onWeaponIncomplete.AddListener(ShowGhost);
+            weaponBase.onWeaponFullyAssembled.AddListener(OnFullyAssembled);
+            weaponBase.onWeaponIncomplete.AddListener(OnIncomplete);
 
-            // Sync state immediately in case the weapon is already assembled on enable
             RefreshVisibility();
         }
 
@@ -41,32 +51,109 @@ namespace VRWeaponSimulator
         {
             if (weaponBase == null) return;
 
-            weaponBase.onWeaponFullyAssembled.RemoveListener(HideGhost);
-            weaponBase.onWeaponIncomplete.RemoveListener(ShowGhost);
+            weaponBase.onWeaponFullyAssembled.RemoveListener(OnFullyAssembled);
+            weaponBase.onWeaponIncomplete.RemoveListener(OnIncomplete);
         }
 
-        private void HideGhost()
+        private void Update()
+        {
+            if (!useProximityFading || showAllGhostsWhenIncomplete || weaponBase == null || weaponBase.isFullyAssembled)
+                return;
+
+            _checkTimer += Time.deltaTime;
+            if (_checkTimer < CheckInterval) return;
+            _checkTimer = 0f;
+
+            UpdateProximityGhosts();
+        }
+
+        private void UpdateProximityGhosts()
+        {
+            Transform socketsRoot = weaponBase.transform.Find("Sockets");
+            Transform ghostRootT = ghostRoot.transform;
+            if (socketsRoot == null || ghostRootT == null) return;
+
+            foreach (var socket in socketsRoot.GetComponentsInChildren<WeaponSocket>())
+            {
+                if (socket == null) continue;
+
+                Transform ghostPart = ghostRootT.Find(socket.name);
+                if (ghostPart == null) continue;
+
+                // If already attached, ghost should always stay hidden
+                if (socket.hasSelection)
+                {
+                    if (ghostPart.gameObject.activeSelf)
+                        ghostPart.gameObject.SetActive(false);
+                    continue;
+                }
+
+                // If part is detached, check if held by player near this socket
+                bool shouldShow = false;
+                if (socket.expectedPart != null && socket.expectedPart.GrabInteractable != null)
+                {
+                    bool isGrabbedByHand = false;
+                    foreach (var interactor in socket.expectedPart.GrabInteractable.interactorsSelecting)
+                    {
+                        if (interactor is not UnityEngine.XR.Interaction.Toolkit.Interactors.XRSocketInteractor)
+                        {
+                            isGrabbedByHand = true;
+                            break;
+                        }
+                    }
+
+                    if (isGrabbedByHand)
+                    {
+                        float dist = Vector3.Distance(socket.expectedPart.transform.position, socket.transform.position);
+                        if (dist <= proximityDistance)
+                        {
+                            shouldShow = true;
+                        }
+                    }
+                }
+
+                if (ghostPart.gameObject.activeSelf != shouldShow)
+                {
+                    ghostPart.gameObject.SetActive(shouldShow);
+                }
+            }
+        }
+
+        private void OnFullyAssembled()
         {
             if (ghostRoot != null)
                 ghostRoot.SetActive(false);
         }
 
-        private void ShowGhost()
+        private void OnIncomplete()
         {
             if (ghostRoot != null)
                 ghostRoot.SetActive(true);
+
+            if (showAllGhostsWhenIncomplete)
+            {
+                // Show all unattached ghosts
+                Transform socketsRoot = weaponBase.transform.Find("Sockets");
+                if (socketsRoot != null)
+                {
+                    foreach (var s in socketsRoot.GetComponentsInChildren<WeaponSocket>())
+                    {
+                        Transform g = ghostRoot.transform.Find(s.name);
+                        if (g != null)
+                            g.gameObject.SetActive(!s.hasSelection);
+                    }
+                }
+            }
         }
 
-        /// <summary>
-        /// Syncs the ghost visibility to the current assembly state of the weapon.
-        /// Useful on scene load or prefab instantiation.
-        /// </summary>
-        private void RefreshVisibility()
+        public void RefreshVisibility()
         {
+            if (weaponBase == null) return;
+
             if (weaponBase.isFullyAssembled)
-                HideGhost();
+                OnFullyAssembled();
             else
-                ShowGhost();
+                OnIncomplete();
         }
     }
 }

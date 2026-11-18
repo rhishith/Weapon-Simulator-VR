@@ -124,6 +124,8 @@ public class WeaponFullAutoBuilder : EditorWindow
         ghostCtrl.weaponBase = weaponBase;
         ghostCtrl.ghostRoot = ghostRoot.gameObject;
 
+        SetupRealisticDependencies(weaponBase, socketsRoot);
+
         weaponBase.AutoCollectParts();
         weaponBase.AutoFindSpecialComponents();
         EditorUtility.SetDirty(weaponBase);
@@ -227,6 +229,14 @@ public class WeaponFullAutoBuilder : EditorWindow
                 slideComp.socket = socketComp;
                 weaponBase.weaponSlide = slideComp;
                 EditorUtility.SetDirty(slideComp);
+            }
+
+            // Secondary Grip (Handguard / Grip)
+            if (partName.Contains("Grip") || partName.Contains("BarrelGuard") || data.type == PartType.Grip)
+            {
+                var gripComp = AddIfMissing<WeaponSecondaryGrip>(part);
+                gripComp.weaponBase = weaponBase;
+                EditorUtility.SetDirty(gripComp);
             }
 
             // Ghost
@@ -348,6 +358,13 @@ public class WeaponFullAutoBuilder : EditorWindow
                 weaponBase.weaponSlide = slideComp;
             }
 
+            // Secondary Grip (Handguard / Grip)
+            if (partName.Contains("Grip") || partName.Contains("BarrelGuard") || data.type == PartType.Grip)
+            {
+                var gripComp = AddIfMissing<WeaponSecondaryGrip>(part);
+                gripComp.weaponBase = weaponBase;
+            }
+
             // =====================
             // 4. GHOST VISUAL
             // =====================
@@ -360,6 +377,46 @@ public class WeaponFullAutoBuilder : EditorWindow
             socketComp.ghostMesh = ghost;
 
             DestroyImmediate(mesh.gameObject);
+        }
+    }
+
+    private static void SetupRealisticDependencies(WeaponBase weaponBase, Transform socketsRoot)
+    {
+        WeaponSocket receiverSocket = null;
+        WeaponSocket barrelSocket = null;
+
+        foreach (var s in socketsRoot.GetComponentsInChildren<WeaponSocket>())
+        {
+            if (s.name.Contains("Receiver_Down") || (receiverSocket == null && s.name.Contains("Receiver")))
+                receiverSocket = s;
+            if (s.name.Contains("Barrel") && !s.name.Contains("Guard"))
+                barrelSocket = s;
+        }
+
+        foreach (var s in socketsRoot.GetComponentsInChildren<WeaponSocket>())
+        {
+            s.requiredSockets.Clear();
+
+            // All major parts require the receiver frame
+            if (receiverSocket != null && s != receiverSocket)
+            {
+                if (s.name.Contains("Stock") || s.name.Contains("Trigger") || s.name.Contains("Bolt") || s.name.Contains("Grip") || s.name.Contains("Barrel") || s.name.Contains("Mag"))
+                {
+                    s.requiredSockets.Add(receiverSocket);
+                }
+            }
+
+            // Muzzle and barrel guard require barrel
+            if (barrelSocket != null && s != barrelSocket)
+            {
+                if (s.name.Contains("Muzzle") || s.name.Contains("BarrelGuard") || s.name.Contains("Brake"))
+                {
+                    if (!s.requiredSockets.Contains(barrelSocket))
+                        s.requiredSockets.Add(barrelSocket);
+                }
+            }
+
+            EditorUtility.SetDirty(s);
         }
     }
 

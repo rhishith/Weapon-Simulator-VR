@@ -70,6 +70,17 @@ namespace VRWeaponSimulator
 
             if (hasSelection && ghostMesh != null)
                 ghostMesh.SetActive(false);
+
+            // Ensure already attached parts start kinematic to eliminate PhysX jitter
+            if (hasSelection && firstInteractableSelected != null)
+            {
+                if (firstInteractableSelected.transform.TryGetComponent<Rigidbody>(out var rb))
+                {
+                    rb.isKinematic = true;
+                    rb.linearVelocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                }
+            }
         }
 
         private void AutoResolvePart()
@@ -122,11 +133,14 @@ namespace VRWeaponSimulator
             var part = interactable.transform.GetComponent<WeaponPart>();
             if (part == null || part != expectedPart) return false;
 
-            // Dependency check
-            foreach (var socket in requiredSockets)
+            // Dependency check (enforced only in RealisticArmorer mode)
+            if (weaponBase != null && weaponBase.assemblyMode == AssemblyMode.RealisticArmorer)
             {
-                if (socket == null) continue;
-                if (!socket.hasSelection) return false;
+                foreach (var socket in requiredSockets)
+                {
+                    if (socket == null) continue;
+                    if (!socket.hasSelection) return false;
+                }
             }
 
             return true;
@@ -150,6 +164,14 @@ namespace VRWeaponSimulator
             if (part != null && weaponBase != null)
                 weaponBase.RegisterPart(part);
 
+            // Set kinematic to avoid multi-body physics jitter on attached weapon
+            if (part != null && part.TryGetComponent<Rigidbody>(out var partRb))
+            {
+                partRb.isKinematic = true;
+                partRb.linearVelocity = Vector3.zero;
+                partRb.angularVelocity = Vector3.zero;
+            }
+
             // Snap transform perfectly
             var t = args.interactableObject.transform;
             t.localPosition = Vector3.zero;
@@ -161,6 +183,8 @@ namespace VRWeaponSimulator
             // Audio & Haptics
             if (snapSound != null)
                 AudioSource.PlayClipAtPoint(snapSound, transform.position);
+            else
+                WeaponSoundManager.PlayAtPoint(WeaponSoundManager.SnapClip, transform.position, 0.7f);
 
             if (enableHaptics && args.interactableObject is XRGrabInteractable grab)
             {
@@ -184,6 +208,12 @@ namespace VRWeaponSimulator
 
             if (part != null && weaponBase != null)
                 weaponBase.UnregisterPart(part);
+
+            // Restore dynamic physics on detach
+            if (part != null && part.TryGetComponent<Rigidbody>(out var partRb))
+            {
+                partRb.isKinematic = false;
+            }
 
             if (ghostMesh != null)
                 ghostMesh.SetActive(true);
@@ -232,6 +262,8 @@ namespace VRWeaponSimulator
             // Audio & Haptics
             if (ejectSound != null)
                 AudioSource.PlayClipAtPoint(ejectSound, transform.position);
+            else
+                WeaponSoundManager.PlayAtPoint(WeaponSoundManager.MagEjectClip, transform.position, 0.8f);
 
             if (enableHaptics && weaponBase != null)
             {

@@ -62,6 +62,10 @@ namespace VRWeaponSimulator
                 {
                     AudioSource.PlayClipAtPoint(grabSound, transform.position);
                 }
+                else
+                {
+                    WeaponSoundManager.PlayAtPoint(WeaponSoundManager.GrabClip, transform.position, 0.4f);
+                }
             }
         }
     }

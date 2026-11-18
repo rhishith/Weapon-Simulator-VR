@@ -41,9 +41,16 @@ namespace VRWeaponSimulator
         public AudioClip rackBackSound;
         public AudioClip returnSound;
 
+        [Header("Slide Lock / Bolt Catch")]
+        [Tooltip("If true, racking the slide can lock it open in the rear position.")]
+        public bool canLockBack = true;
+        public bool isLockedBack = false;
+
         [Header("Events")]
         public UnityEvent onSlideRackedBack;
         public UnityEvent onSlideReturnedForward;
+        public UnityEvent onBoltLockedBack;
+        public UnityEvent onBoltReleased;
 
         private XRGrabInteractable _grab;
         private WeaponPart _part;
@@ -161,6 +168,8 @@ namespace VRWeaponSimulator
 
                     if (rackBackSound != null)
                         AudioSource.PlayClipAtPoint(rackBackSound, transform.position);
+                    else
+                        WeaponSoundManager.PlayAtPoint(WeaponSoundManager.RackBackClip, transform.position, 0.75f);
 
                     if (enableHaptics && handInteractor != null)
                         WeaponHaptics.SendImpulse(handInteractor, rackBackHaptic, 0.08f);
@@ -168,9 +177,14 @@ namespace VRWeaponSimulator
             }
             else
             {
-                // Spring return forward
-                if (_currentRackDistance > 0f)
+                // If locked open in the rear position, hold at max distance until released
+                if (isLockedBack)
                 {
+                    _currentRackDistance = maxRackDistance;
+                }
+                else if (_currentRackDistance > 0f)
+                {
+                    // Spring return forward
                     _currentRackDistance = Mathf.MoveTowards(_currentRackDistance, 0f, springReturnSpeed * Time.deltaTime);
 
                     if (_currentRackDistance <= 0.001f)
@@ -189,6 +203,8 @@ namespace VRWeaponSimulator
 
                             if (returnSound != null)
                                 AudioSource.PlayClipAtPoint(returnSound, transform.position);
+                            else
+                                WeaponSoundManager.PlayAtPoint(WeaponSoundManager.RackForwardClip, transform.position, 0.85f);
 
                             if (enableHaptics && _lastHandInteractor != null)
                                 WeaponHaptics.SendImpulse(_lastHandInteractor, returnHaptic, 0.06f);
@@ -208,6 +224,37 @@ namespace VRWeaponSimulator
             Vector3 worldRackOffset = socket.transform.TransformDirection(localRackAxis.normalized) * _currentRackDistance;
             transform.position = socket.transform.position + worldRackOffset;
             transform.rotation = socket.transform.rotation;
+        }
+
+        /// <summary>
+        /// Locks the bolt open in the rear position.
+        /// </summary>
+        public void LockBoltOpen()
+        {
+            if (!canLockBack) return;
+            isLockedBack = true;
+            _currentRackDistance = maxRackDistance;
+            onBoltLockedBack?.Invoke();
+            Debug.Log($"[WeaponSlide] Bolt locked open on {weaponBase?.weaponName}");
+        }
+
+        /// <summary>
+        /// Releases the bolt catch, slamming the slide forward into battery.
+        /// </summary>
+        public void ReleaseBolt()
+        {
+            if (!isLockedBack) return;
+            isLockedBack = false;
+            _wasChamberThresholdReached = true;
+            onBoltReleased?.Invoke();
+
+            if (enableHaptics && weaponBase != null)
+            {
+                if (weaponBase.TryGetComponent<XRGrabInteractable>(out var gunGrab))
+                    WeaponHaptics.SendImpulseToHolders(gunGrab, returnHaptic, 0.08f);
+            }
+
+            Debug.Log($"[WeaponSlide] Bolt released forward on {weaponBase?.weaponName}");
         }
     }
 }

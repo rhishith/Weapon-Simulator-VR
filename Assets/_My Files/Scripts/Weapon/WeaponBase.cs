@@ -6,10 +6,19 @@ using UnityEngine.XR.Interaction.Toolkit.Interactables;
 
 namespace VRWeaponSimulator
 {
+    public enum AssemblyMode
+    {
+        FreeSandbox,
+        RealisticArmorer
+    }
+
     public class WeaponBase : MonoBehaviour
     {
         [Header("Info")]
         public string weaponName;
+
+        [Header("Assembly Rules")]
+        public AssemblyMode assemblyMode = AssemblyMode.FreeSandbox;
 
         [Header("State")]
         public List<WeaponPart> attachedParts = new();
