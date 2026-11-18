@@ -13,12 +13,16 @@ namespace VRWeaponSimulator
         private static AudioClip _rackForwardClip;
         private static AudioClip _magEjectClip;
         private static AudioClip _grabClip;
+        private static AudioClip _buttonHoverClip;
+        private static AudioClip _buttonClickClip;
 
         public static AudioClip SnapClip => _snapClip ??= GenerateSnapSound();
         public static AudioClip RackBackClip => _rackBackClip ??= GenerateRackBackSound();
         public static AudioClip RackForwardClip => _rackForwardClip ??= GenerateRackForwardSound();
         public static AudioClip MagEjectClip => _magEjectClip ??= GenerateMagEjectSound();
         public static AudioClip GrabClip => _grabClip ??= GenerateGrabSound();
+        public static AudioClip ButtonHoverClip => _buttonHoverClip ??= GenerateButtonHoverSound();
+        public static AudioClip ButtonClickClip => _buttonClickClip ??= GenerateButtonClickSound();
 
         public static void PlayAtPoint(AudioClip clip, Vector3 position, float volume = 1f)
         {
@@ -126,6 +130,48 @@ namespace VRWeaponSimulator
             }
 
             AudioClip clip = AudioClip.Create("Procedural_Grab", samples, 1, sampleRate, false);
+            clip.SetData(data, 0);
+            return clip;
+        }
+
+        private static AudioClip GenerateButtonHoverSound()
+        {
+            int sampleRate = 44100;
+            float duration = 0.035f;
+            int samples = (int)(sampleRate * duration);
+            float[] data = new float[samples];
+
+            for (int i = 0; i < samples; i++)
+            {
+                float t = (float)i / sampleRate;
+                float decay = Mathf.Exp(-t * 120f);
+                float tone = Mathf.Sin(2f * Mathf.PI * 2400f * t) * 0.35f;
+                data[i] = tone * decay;
+            }
+
+            AudioClip clip = AudioClip.Create("Procedural_UIHover", samples, 1, sampleRate, false);
+            clip.SetData(data, 0);
+            return clip;
+        }
+
+        private static AudioClip GenerateButtonClickSound()
+        {
+            int sampleRate = 44100;
+            float duration = 0.05f;
+            int samples = (int)(sampleRate * duration);
+            float[] data = new float[samples];
+
+            for (int i = 0; i < samples; i++)
+            {
+                float t = (float)i / sampleRate;
+                float decay = Mathf.Exp(-t * 90f);
+                float click1 = Mathf.Sin(2f * Mathf.PI * 1850f * t) * 0.5f;
+                float click2 = Mathf.Sin(2f * Mathf.PI * 720f * t) * 0.5f;
+                float noise = (Random.value * 2f - 1f) * 0.2f;
+                data[i] = (click1 + click2 + noise) * decay;
+            }
+
+            AudioClip clip = AudioClip.Create("Procedural_UIClick", samples, 1, sampleRate, false);
             clip.SetData(data, 0);
             return clip;
         }

@@ -35,6 +35,7 @@ namespace VRWeaponSimulator
         public AudioClip snapSound;
 
         private InteractionLayerMask _savedMagLayers = ~0;
+        private bool _hasInitialized = false;
 
         private const string PartsRootName = "Parts";
         private const string GhostRootName = "Ghost Visuals";
@@ -139,6 +140,10 @@ namespace VRWeaponSimulator
             // Dependency check (enforced only in RealisticArmorer mode)
             if (weaponBase != null && weaponBase.assemblyMode == AssemblyMode.RealisticArmorer)
             {
+                // Allow initial weapon assembly when spawned
+                if (!_hasInitialized && (object)interactable == (object)startingSelectedInteractable)
+                    return true;
+
                 foreach (var socket in requiredSockets)
                 {
                     if (socket == null) continue;
@@ -162,6 +167,7 @@ namespace VRWeaponSimulator
 
         private void OnPartAttached(SelectEnterEventArgs args)
         {
+            _hasInitialized = true;
             var part = args.interactableObject.transform.GetComponent<WeaponPart>();
 
             if (part != null && weaponBase != null)
