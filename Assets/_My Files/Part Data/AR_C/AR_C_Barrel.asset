@@ -13,6 +13,6 @@ MonoBehaviour:
   m_Name: AR_C_Barrel
   m_EditorClassIdentifier: 
   partName: AR_C_Barrel
-  type: 0
+  type: 1
   description: 
   weight: 1

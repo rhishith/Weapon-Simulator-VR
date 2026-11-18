@@ -13,6 +13,6 @@ MonoBehaviour:
   m_Name: AR_C_Stock
   m_EditorClassIdentifier: 
   partName: AR_C_Stock
-  type: 0
+  type: 3
   description: 
   weight: 1

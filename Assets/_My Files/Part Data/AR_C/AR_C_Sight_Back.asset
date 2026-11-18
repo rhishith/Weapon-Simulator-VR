@@ -13,6 +13,6 @@ MonoBehaviour:
   m_Name: AR_C_Sight_Back
   m_EditorClassIdentifier: 
   partName: AR_C_Sight_Back
-  type: 0
+  type: 4
   description: 
   weight: 1

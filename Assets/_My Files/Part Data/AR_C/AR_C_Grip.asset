@@ -13,6 +13,6 @@ MonoBehaviour:
   m_Name: AR_C_Grip
   m_EditorClassIdentifier: 
   partName: AR_C_Grip
-  type: 0
+  type: 9
   description: 
   weight: 1

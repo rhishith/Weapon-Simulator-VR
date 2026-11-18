@@ -13,6 +13,6 @@ MonoBehaviour:
   m_Name: AR_C_Receiver_Down
   m_EditorClassIdentifier: 
   partName: AR_C_Receiver_Down
-  type: 0
+  type: 7
   description: 
   weight: 1

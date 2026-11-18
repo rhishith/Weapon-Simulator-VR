@@ -13,6 +13,6 @@ MonoBehaviour:
   m_Name: AR_C_Trigger
   m_EditorClassIdentifier: 
   partName: AR_C_Trigger
-  type: 0
+  type: 8
   description: 
   weight: 1
