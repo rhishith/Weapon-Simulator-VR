@@ -11,7 +11,7 @@ namespace VRWeaponSimulator
 
         [Header("State")]
         public List<WeaponPart> attachedParts = new();
-        private List<WeaponPart> allParts = new();
+        public List<WeaponPart> allParts = new();
 
         public bool isFullyAssembled;
 
@@ -26,16 +26,22 @@ namespace VRWeaponSimulator
             AutoCollectParts();
         }
 
-        private void AutoCollectParts()
+        private void Start()
+        {
+            UpdateAssemblyState();
+        }
+
+        public void AutoCollectParts()
         {
             Transform partsRoot = transform.Find(PartsRootName);
 
             if (partsRoot == null)
             {
-                Debug.LogError($"[WeaponBase] Parts root not found!", this);
+                Debug.LogError($"[WeaponBase] Parts root not found on {name}!", this);
                 return;
             }
 
+            allParts.Clear();
             allParts.AddRange(partsRoot.GetComponentsInChildren<WeaponPart>());
         }
 
@@ -57,21 +63,21 @@ namespace VRWeaponSimulator
             }
         }
 
-        private void UpdateAssemblyState()
+        public void UpdateAssemblyState()
         {
             bool wasFull = isFullyAssembled;
 
-            isFullyAssembled = attachedParts.Count == allParts.Count;
+            isFullyAssembled = allParts.Count > 0 && attachedParts.Count >= allParts.Count;
 
             if (!wasFull && isFullyAssembled)
             {
                 onWeaponFullyAssembled?.Invoke();
-                Debug.Log($"{weaponName} Fully Assembled");
+                Debug.Log($"[WeaponBase] {weaponName} Fully Assembled ({attachedParts.Count}/{allParts.Count})");
             }
             else if (wasFull && !isFullyAssembled)
             {
                 onWeaponIncomplete?.Invoke();
-                Debug.Log($"{weaponName} Incomplete");
+                Debug.Log($"[WeaponBase] {weaponName} Incomplete ({attachedParts.Count}/{allParts.Count})");
             }
         }
     }

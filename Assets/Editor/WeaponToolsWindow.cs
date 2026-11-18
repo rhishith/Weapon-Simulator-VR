@@ -9,7 +9,9 @@ public class WeaponFullAutoBuilder : EditorWindow
     private GameObject weaponPrefab;
     private Material ghostMaterial;
 
-    private string rootPath = "Assets/My Files/Part Data";
+    private const string RootDataPath = "Assets/_My Files/Part Data";
+    private const string WeaponsPrefabFolder = "Assets/_My Files/Prefabs/Weapons";
+    private const string DefaultGhostMatPath = "Assets/_My Files/Materials/M_Ghost.mat";
 
     [MenuItem("Tools/Weapon Simulator/FULL Auto Setup")]
     public static void ShowWindow()
@@ -17,144 +19,279 @@ public class WeaponFullAutoBuilder : EditorWindow
         GetWindow<WeaponFullAutoBuilder>("FULL Auto Setup");
     }
 
-    private void OnGUI()
+    private void OnEnable()
     {
-        GUILayout.Label("FULL Weapon Auto Builder", EditorStyles.boldLabel);
-
-        weaponPrefab = (GameObject)EditorGUILayout.ObjectField("Weapon Prefab", weaponPrefab, typeof(GameObject), false);
-        ghostMaterial = (Material)EditorGUILayout.ObjectField("Ghost Material", ghostMaterial, typeof(Material), false);
-
-        if (GUILayout.Button("GENERATE COMPLETE SETUP"))
-        {
-            Generate();
-        }
+        if (ghostMaterial == null)
+            ghostMaterial = AssetDatabase.LoadAssetAtPath<Material>(DefaultGhostMatPath);
     }
 
-    private void Generate()
+    private void OnGUI()
     {
-        if (weaponPrefab == null)
+        GUILayout.Label("Weapon Assembly & Disassembly Setup", EditorStyles.boldLabel);
+        EditorGUILayout.Space(5);
+
+        weaponPrefab = (GameObject)EditorGUILayout.ObjectField("Single Weapon Prefab", weaponPrefab, typeof(GameObject), false);
+        ghostMaterial = (Material)EditorGUILayout.ObjectField("Ghost Material", ghostMaterial, typeof(Material), false);
+
+        EditorGUILayout.Space(10);
+        if (GUILayout.Button("GENERATE SINGLE WEAPON SETUP", GUILayout.Height(30)))
         {
-            Debug.LogError("Assign weapon prefab!");
-            return;
+            if (weaponPrefab == null)
+            {
+                EditorUtility.DisplayDialog("Error", "Please assign a weapon prefab!", "OK");
+                return;
+            }
+            EnsureGhostMaterial();
+            SetupWeapon(weaponPrefab, true, true, ghostMaterial);
         }
 
-        GameObject instance = Instantiate(weaponPrefab);
-        instance.name = weaponPrefab.name;
+        EditorGUILayout.Space(10);
+        GUI.backgroundColor = new Color(0.4f, 0.8f, 1f);
+        if (GUILayout.Button("🔥 SETUP ALL WEAPONS IN PREFAB FOLDER", GUILayout.Height(36)))
+        {
+            EnsureGhostMaterial();
+            SetupAllWeaponsInFolder(ghostMaterial);
+        }
+        GUI.backgroundColor = Color.white;
+    }
 
-        Undo.RegisterCreatedObjectUndo(instance, "Create Weapon");
+    private void EnsureGhostMaterial()
+    {
+        if (ghostMaterial == null)
+            ghostMaterial = AssetDatabase.LoadAssetAtPath<Material>(DefaultGhostMatPath);
+    }
 
-        // 🔥 Ensure WeaponBase
+    public static void SetupAllWeaponsInFolder(Material customGhostMat = null)
+    {
+        Material mat = customGhostMat != null ? customGhostMat : AssetDatabase.LoadAssetAtPath<Material>(DefaultGhostMatPath);
+        string[] prefabGuids = AssetDatabase.FindAssets("t:Prefab", new[] { WeaponsPrefabFolder });
+        int count = 0;
+
+        foreach (string guid in prefabGuids)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            if (prefab == null) continue;
+
+            Debug.Log($"[WeaponBuilder] Setting up: {prefab.name} from {path}");
+            SetupWeapon(prefab, true, false, mat);
+            count++;
+        }
+
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+        Debug.Log($"[WeaponBuilder] Successfully configured assembly & disassembly for {count} weapons in {WeaponsPrefabFolder}!");
+    }
+
+    public static GameObject SetupWeapon(GameObject prefab, bool saveAsPrefab, bool keepInScene, Material customGhostMat = null)
+    {
+        Material ghostMat = customGhostMat != null ? customGhostMat : AssetDatabase.LoadAssetAtPath<Material>(DefaultGhostMatPath);
+
+        GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+        if (instance == null)
+            instance = Instantiate(prefab);
+
+        // Unpack prefab so we can restructure hierarchy freely
+        if (PrefabUtility.IsPartOfPrefabInstance(instance))
+            PrefabUtility.UnpackPrefabInstance(instance, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+
+        instance.name = prefab.name;
+        Undo.RegisterCreatedObjectUndo(instance, "Create Weapon Setup");
+
+        // Ensure WeaponBase on root
         var weaponBase = instance.GetComponent<WeaponBase>();
         if (weaponBase == null)
             weaponBase = instance.AddComponent<WeaponBase>();
 
         weaponBase.weaponName = instance.name;
 
-        // 🔥 Create roots
+        // Create roots
         Transform partsRoot = CreateChild(instance.transform, "Parts");
         Transform socketsRoot = CreateChild(instance.transform, "Sockets");
         Transform ghostRoot = CreateChild(instance.transform, "Ghost Visuals");
 
-        // 🔥 Create data folders
-        string weaponFolder = $"{rootPath}/{instance.name}";
-        CreateFolders(instance.name);
+        // Flatten any deeply nested detachable parts (e.g. Pistol_G_Mag inside Receiver_Part)
+        ExtractNestedDetachableParts(instance.transform, partsRoot, socketsRoot, ghostRoot);
 
-        var meshObjects = GetTopLevelMeshes(instance.transform);
+        // Create data folder for this weapon
+        string weaponFolder = $"{RootDataPath}/{instance.name}";
+        EnsureFolderExists(RootDataPath);
+        EnsureFolderExists(weaponFolder);
+
+        var meshObjects = GetTopLevelMeshes(instance.transform, partsRoot, socketsRoot, ghostRoot);
 
         foreach (var mesh in meshObjects)
         {
-            // Skip already generated folders
-            if (mesh.parent == partsRoot || mesh.parent == socketsRoot || mesh.parent == ghostRoot)
-                continue;
-
-            string name = mesh.name;
+            string partName = mesh.name;
 
             // =====================
-            // PART
+            // 1. PART
             // =====================
             GameObject part = Instantiate(mesh.gameObject, partsRoot);
-            part.name = name;
+            part.name = partName;
+            part.transform.position = mesh.position;
+            part.transform.rotation = mesh.rotation;
 
             var partComp = AddIfMissing<WeaponPart>(part);
-            AddIfMissing<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>(part);
+            var grab = AddIfMissing<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>(part);
 
-            if (!part.GetComponent<Collider>())
-                part.AddComponent<BoxCollider>();
+            // Fit BoxCollider on Part
+            var partBox = part.GetComponent<BoxCollider>();
+            if (partBox == null)
+                partBox = part.AddComponent<BoxCollider>();
+
+            var renderers = part.GetComponentsInChildren<Renderer>();
+            if (renderers.Length > 0)
+            {
+                Bounds b = renderers[0].bounds;
+                for (int i = 1; i < renderers.Length; i++)
+                    b.Encapsulate(renderers[i].bounds);
+
+                partBox.center = part.transform.InverseTransformPoint(b.center);
+                Vector3 lossy = part.transform.lossyScale;
+                partBox.size = new Vector3(
+                    lossy.x != 0 ? b.size.x / lossy.x : b.size.x,
+                    lossy.y != 0 ? b.size.y / lossy.y : b.size.y,
+                    lossy.z != 0 ? b.size.z / lossy.z : b.size.z
+                );
+            }
+
+            // Setup Rigidbody
+            var rb = AddIfMissing<Rigidbody>(part);
+            rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
 
             // =====================
-            // SOCKET
+            // 2. PART DATA SCRIPTABLE OBJECT
             // =====================
-            GameObject socket = new GameObject(name);
+            string assetPath = $"{weaponFolder}/{partName}.asset";
+            PartData data = AssetDatabase.LoadAssetAtPath<PartData>(assetPath);
+            if (data == null)
+            {
+                data = ScriptableObject.CreateInstance<PartData>();
+                data.partName = partName;
+                data.type = DeterminePartType(partName);
+                data.weight = 1.0f;
+                AssetDatabase.CreateAsset(data, assetPath);
+            }
+            partComp.data = data;
+            rb.mass = data.weight;
+            EditorUtility.SetDirty(partComp);
+
+            // =====================
+            // 3. SOCKET
+            // =====================
+            GameObject socket = new GameObject(partName);
             socket.transform.SetParent(socketsRoot);
             socket.transform.position = mesh.position;
             socket.transform.rotation = mesh.rotation;
 
-            var socketComp = socket.AddComponent<WeaponSocket>();
-
-            // Assign WeaponBase (editor-side for clarity)
-            var so = new SerializedObject(socketComp);
-            var prop = so.FindProperty("weaponBase");
-            if (prop != null)
+            // Add trigger BoxCollider for socket hover/snap detection
+            var socketBox = socket.AddComponent<BoxCollider>();
+            socketBox.isTrigger = true;
+            if (partBox != null)
             {
-                prop.objectReferenceValue = weaponBase;
-                so.ApplyModifiedProperties();
+                socketBox.center = partBox.center;
+                socketBox.size = new Vector3(
+                    Mathf.Max(partBox.size.x * 1.35f, 0.08f),
+                    Mathf.Max(partBox.size.y * 1.35f, 0.08f),
+                    Mathf.Max(partBox.size.z * 1.35f, 0.08f)
+                );
             }
 
+            var socketComp = socket.AddComponent<WeaponSocket>();
+            socketComp.weaponBase = weaponBase;
+            socketComp.expectedPart = partComp;
+            socketComp.startingSelectedInteractable = grab;
+
             // =====================
-            // GHOST
+            // 4. GHOST VISUAL
             // =====================
             GameObject ghost = Instantiate(mesh.gameObject, ghostRoot);
-            ghost.name = name;
+            ghost.name = partName;
+            ghost.transform.position = mesh.position;
+            ghost.transform.rotation = mesh.rotation;
 
-            CleanGhost(ghost);
+            CleanGhost(ghost, ghostMat);
+            socketComp.ghostMesh = ghost;
 
-            // =====================
-            // PART DATA
-            // =====================
-            string assetPath = $"{weaponFolder}/{name}.asset";
-
-            PartData data = AssetDatabase.LoadAssetAtPath<PartData>(assetPath);
-
-            if (data == null)
-            {
-                data = ScriptableObject.CreateInstance<PartData>();
-                data.partName = name;
-
-                AssetDatabase.CreateAsset(data, assetPath);
-            }
-
-            partComp.data = data;
-            EditorUtility.SetDirty(partComp);
-
-            // =====================
-            // 🔥 MOVE ORIGINAL (FIX DUPLICATE ISSUE)
-            // =====================
+            // Remove original mesh GameObject
             DestroyImmediate(mesh.gameObject);
         }
 
-        AssetDatabase.SaveAssets();
-        AssetDatabase.Refresh();
+        // Setup WeaponGhostVisualController on ghostRoot
+        var ghostCtrl = AddIfMissing<WeaponGhostVisualController>(ghostRoot.gameObject);
+        ghostCtrl.weaponBase = weaponBase;
+        ghostCtrl.ghostRoot = ghostRoot.gameObject;
 
-        Debug.Log("🔥 FULL WEAPON SETUP COMPLETE (NO DUPLICATES)");
+        // Register parts on WeaponBase
+        weaponBase.AutoCollectParts();
+
+        if (saveAsPrefab)
+        {
+            string prefabSavePath = $"{WeaponsPrefabFolder}/{instance.name}.prefab";
+            PrefabUtility.SaveAsPrefabAsset(instance, prefabSavePath);
+            Debug.Log($"[WeaponBuilder] Saved prefab: {prefabSavePath}");
+        }
+
+        if (!keepInScene)
+        {
+            DestroyImmediate(instance);
+            return null;
+        }
+
+        return instance;
     }
 
-    // -----------------------
-    // HELPERS
-    // -----------------------
-
-    private void CreateFolders(string weaponName)
+    private static void ExtractNestedDetachableParts(Transform root, Transform partsRoot, Transform socketsRoot, Transform ghostRoot)
     {
-        if (!AssetDatabase.IsValidFolder("Assets/My Files"))
-            AssetDatabase.CreateFolder("Assets", "My Files");
+        List<Transform> toUnparent = new();
+        foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
+        {
+            if (t == root || t == partsRoot || t == socketsRoot || t == ghostRoot)
+                continue;
 
-        if (!AssetDatabase.IsValidFolder("Assets/My Files/Part Data"))
-            AssetDatabase.CreateFolder("Assets/My Files", "Part Data");
+            // If it's a Magazine, Sight, Muzzle, etc. nested inside another mesh (e.g. Pistol_G_Mag inside Pistol_G_Receiver_Part)
+            if (t.parent != root && t.parent != null && (t.name.Contains("Mag") || t.name.Contains("Sight_Back") || t.name.Contains("Muzzle")))
+            {
+                toUnparent.Add(t);
+            }
+        }
 
-        if (!AssetDatabase.IsValidFolder($"{rootPath}/{weaponName}"))
-            AssetDatabase.CreateFolder(rootPath, weaponName);
+        foreach (var t in toUnparent)
+        {
+            t.SetParent(root, true);
+        }
     }
 
-    private Transform CreateChild(Transform parent, string name)
+    private static PartType DeterminePartType(string name)
+    {
+        if (name.Contains("Mag")) return PartType.Magazine;
+        if (name.Contains("Barrel")) return PartType.Barrel;
+        if (name.Contains("Bolt") || name.Contains("Slide")) return PartType.Slide;
+        if (name.Contains("Stock")) return PartType.Stock;
+        if (name.Contains("Sight") || name.Contains("Optic")) return PartType.Sight;
+        if (name.Contains("Grip") || name.Contains("Bipod")) return PartType.Grip;
+        if (name.Contains("Receiver")) return PartType.Receiver;
+        if (name.Contains("Trigger") || name.Contains("Tigger")) return PartType.Trigger;
+        if (name.Contains("Rail")) return PartType.Rail;
+        if (name.Contains("Muzzle") || name.Contains("Brake")) return PartType.Muzzle;
+        return PartType.Other;
+    }
+
+    private static void EnsureFolderExists(string folderPath)
+    {
+        string[] parts = folderPath.Split('/');
+        string current = parts[0];
+        for (int i = 1; i < parts.Length; i++)
+        {
+            string next = current + "/" + parts[i];
+            if (!AssetDatabase.IsValidFolder(next))
+                AssetDatabase.CreateFolder(current, parts[i]);
+            current = next;
+        }
+    }
+
+    private static Transform CreateChild(Transform parent, string name)
     {
         var t = parent.Find(name);
         if (t != null) return t;
@@ -163,46 +300,46 @@ public class WeaponFullAutoBuilder : EditorWindow
         go.transform.SetParent(parent);
         go.transform.localPosition = Vector3.zero;
         go.transform.localRotation = Quaternion.identity;
-
         return go.transform;
     }
 
-    private List<Transform> GetTopLevelMeshes(Transform root)
+    private static List<Transform> GetTopLevelMeshes(Transform root, Transform partsRoot, Transform socketsRoot, Transform ghostRoot)
     {
         List<Transform> result = new();
-
         foreach (Transform child in root)
         {
-            if (child.GetComponent<MeshRenderer>())
+            if (child == partsRoot || child == socketsRoot || child == ghostRoot)
+                continue;
+
+            if (child.GetComponent<MeshRenderer>() != null || child.GetComponentInChildren<MeshRenderer>() != null)
                 result.Add(child);
         }
-
         return result;
     }
 
-    private T AddIfMissing<T>(GameObject go) where T : Component
+    private static T AddIfMissing<T>(GameObject go) where T : Component
     {
         var comp = go.GetComponent<T>();
         if (comp == null)
             comp = go.AddComponent<T>();
-
         return comp;
     }
 
-    private void CleanGhost(GameObject go)
+    private static void CleanGhost(GameObject go, Material ghostMat)
     {
-        foreach (var comp in go.GetComponents<Component>())
-        {
-            if (comp is Transform) continue;
-            if (comp is MeshRenderer || comp is MeshFilter) continue;
+        foreach (var col in go.GetComponentsInChildren<Collider>(true))
+            DestroyImmediate(col);
 
+        foreach (var comp in go.GetComponentsInChildren<Component>(true))
+        {
+            if (comp is Transform || comp is MeshRenderer || comp is MeshFilter) continue;
             DestroyImmediate(comp);
         }
 
-        if (ghostMaterial != null)
+        if (ghostMat != null)
         {
-            foreach (var r in go.GetComponentsInChildren<Renderer>())
-                r.sharedMaterial = ghostMaterial;
+            foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+                r.sharedMaterial = ghostMat;
         }
     }
 }

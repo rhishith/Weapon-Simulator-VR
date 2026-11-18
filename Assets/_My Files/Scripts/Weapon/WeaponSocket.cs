@@ -13,8 +13,8 @@ namespace VRWeaponSimulator
         public List<WeaponSocket> requiredSockets = new();
 
         [Header("Auto References")]
-        private WeaponPart expectedPart;
-        private GameObject ghostMesh;
+        public WeaponPart expectedPart;
+        public GameObject ghostMesh;
 
         private const string PartsRootName = "Parts";
         private const string GhostRootName = "Ghost Visuals";
@@ -23,24 +23,34 @@ namespace VRWeaponSimulator
         {
             base.Awake();
 
-if (weaponBase == null)
-{
-    weaponBase = GetComponentInParent<WeaponBase>();
+            if (weaponBase == null)
+            {
+                weaponBase = GetComponentInParent<WeaponBase>();
 
-    if (weaponBase == null)
-    {
-        Debug.LogError($"[WeaponSocket] {name} could not find WeaponBase in parents!", this);
-        return;
-    }
-}
+                if (weaponBase == null)
+                {
+                    Debug.LogError($"[WeaponSocket] {name} could not find WeaponBase in parents!", this);
+                    return;
+                }
+            }
 
             AutoResolvePart();
             AutoResolveGhost();
         }
 
+        protected override void Start()
+        {
+            base.Start();
+            if (hasSelection && ghostMesh != null)
+                ghostMesh.SetActive(false);
+        }
+
         // 🔥 AUTO FIND PART
         private void AutoResolvePart()
         {
+            if (expectedPart != null) return;
+            if (weaponBase == null) return;
+
             Transform partsRoot = weaponBase.transform.Find(PartsRootName);
 
             if (partsRoot == null)
@@ -68,6 +78,9 @@ if (weaponBase == null)
         // 🔥 AUTO FIND GHOST
         private void AutoResolveGhost()
         {
+            if (ghostMesh != null) return;
+            if (weaponBase == null) return;
+
             Transform ghostRoot = weaponBase.transform.Find(GhostRootName);
 
             if (ghostRoot == null)
