@@ -148,6 +148,41 @@ public class WeaponFullAutoBuilder : EditorWindow
 
     private static void UpdateExistingWeaponSetup(GameObject instance, WeaponBase weaponBase, Transform partsRoot, Transform socketsRoot, Transform ghostRoot, string weaponFolder, Material ghostMat)
     {
+        // Deduplicate any repeated parts, sockets, or ghosts
+        HashSet<string> seenParts = new();
+        List<GameObject> toDestroy = new();
+
+        foreach (Transform partT in partsRoot)
+        {
+            if (!seenParts.Add(partT.name))
+            {
+                toDestroy.Add(partT.gameObject);
+            }
+        }
+
+        HashSet<string> seenSockets = new();
+        foreach (Transform sT in socketsRoot)
+        {
+            if (!seenSockets.Add(sT.name) || !seenParts.Contains(sT.name))
+            {
+                toDestroy.Add(sT.gameObject);
+            }
+        }
+
+        HashSet<string> seenGhosts = new();
+        foreach (Transform gT in ghostRoot)
+        {
+            if (!seenGhosts.Add(gT.name) || !seenParts.Contains(gT.name))
+            {
+                toDestroy.Add(gT.gameObject);
+            }
+        }
+
+        foreach (var go in toDestroy)
+        {
+            DestroyImmediate(go);
+        }
+
         foreach (Transform partT in partsRoot)
         {
             string partName = partT.name;
@@ -425,10 +460,12 @@ public class WeaponFullAutoBuilder : EditorWindow
         List<Transform> toUnparent = new();
         foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
         {
-            if (t == root || t == partsRoot || t == socketsRoot || t == ghostRoot)
-                continue;
+            if (t == root) continue;
+            if (partsRoot != null && t.IsChildOf(partsRoot)) continue;
+            if (socketsRoot != null && t.IsChildOf(socketsRoot)) continue;
+            if (ghostRoot != null && t.IsChildOf(ghostRoot)) continue;
 
-            if (t.parent != root && t.parent != null && (t.name.Contains("Mag") || t.name.Contains("Sight_Back") || t.name.Contains("Muzzle")))
+            if (t.parent != root && t.parent != null && t.name.Contains("Mag"))
             {
                 toUnparent.Add(t);
             }

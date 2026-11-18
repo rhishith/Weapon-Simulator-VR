@@ -76,9 +76,12 @@ namespace VRWeaponSimulator
             {
                 if (firstInteractableSelected.transform.TryGetComponent<Rigidbody>(out var rb))
                 {
-                    rb.isKinematic = true;
-                    rb.linearVelocity = Vector3.zero;
-                    rb.angularVelocity = Vector3.zero;
+                    if (!rb.isKinematic)
+                    {
+                        rb.linearVelocity = Vector3.zero;
+                        rb.angularVelocity = Vector3.zero;
+                        rb.isKinematic = true;
+                    }
                 }
             }
         }
@@ -167,9 +170,12 @@ namespace VRWeaponSimulator
             // Set kinematic to avoid multi-body physics jitter on attached weapon
             if (part != null && part.TryGetComponent<Rigidbody>(out var partRb))
             {
-                partRb.isKinematic = true;
-                partRb.linearVelocity = Vector3.zero;
-                partRb.angularVelocity = Vector3.zero;
+                if (!partRb.isKinematic)
+                {
+                    partRb.linearVelocity = Vector3.zero;
+                    partRb.angularVelocity = Vector3.zero;
+                    partRb.isKinematic = true;
+                }
             }
 
             // Snap transform perfectly
