@@ -13,6 +13,6 @@ MonoBehaviour:
   m_Name: Pistol_K_BarrelGuard
   m_EditorClassIdentifier: Assembly-CSharp::VRWeaponSimulator.PartData
   partName: Pistol_K_BarrelGuard
-  type: 1
+  type: 2
   description: 
   weight: 1

@@ -125,6 +125,7 @@ public class WeaponFullAutoBuilder : EditorWindow
         ghostCtrl.ghostRoot = ghostRoot.gameObject;
 
         SetupRealisticDependencies(weaponBase, socketsRoot);
+        SetupRootWeaponInteractable(instance, weaponBase, partsRoot);
 
         weaponBase.AutoCollectParts();
         weaponBase.AutoFindSpecialComponents();
@@ -148,6 +149,18 @@ public class WeaponFullAutoBuilder : EditorWindow
 
     private static void UpdateExistingWeaponSetup(GameObject instance, WeaponBase weaponBase, Transform partsRoot, Transform socketsRoot, Transform ghostRoot, string weaponFolder, Material ghostMat)
     {
+        // Clean up any orphan/loose children directly under instance (outside Parts, Sockets, Ghost Visuals, AttachPoint)
+        List<GameObject> looseChildren = new();
+        foreach (Transform child in instance.transform)
+        {
+            if (child == partsRoot || child == socketsRoot || child == ghostRoot || child.name == "AttachPoint") continue;
+            looseChildren.Add(child.gameObject);
+        }
+        foreach (var go in looseChildren)
+        {
+            DestroyImmediate(go);
+        }
+
         // Deduplicate any repeated parts, sockets, or ghosts
         HashSet<string> seenParts = new();
         List<GameObject> toDestroy = new();
@@ -257,17 +270,32 @@ public class WeaponFullAutoBuilder : EditorWindow
             }
 
             // Slide / Bolt
-            if (data.type == PartType.Slide || partName.Contains("Bolt") || partName.Contains("Slide"))
+            bool isSlide = (data.type == PartType.Slide || partName.Contains("Bolt") || partName.Contains("Slide") || (partName.StartsWith("Pistol_K") && partName.Contains("BarrelGuard")));
+            if (isSlide)
             {
                 var slideComp = AddIfMissing<WeaponSlide>(part);
                 slideComp.weaponBase = weaponBase;
                 slideComp.socket = socketComp;
                 weaponBase.weaponSlide = slideComp;
                 EditorUtility.SetDirty(slideComp);
+
+                var existingGrip = part.GetComponent<WeaponSecondaryGrip>();
+                if (existingGrip != null)
+                {
+                    DestroyImmediate(existingGrip);
+                }
+            }
+            else
+            {
+                var existingSlide = part.GetComponent<WeaponSlide>();
+                if (existingSlide != null)
+                {
+                    DestroyImmediate(existingSlide);
+                }
             }
 
             // Secondary Grip (Handguard / Grip)
-            if (partName.Contains("Grip") || partName.Contains("BarrelGuard") || data.type == PartType.Grip)
+            if (!isSlide && (partName.Contains("Grip") || partName.Contains("BarrelGuard") || data.type == PartType.Grip))
             {
                 var gripComp = AddIfMissing<WeaponSecondaryGrip>(part);
                 gripComp.weaponBase = weaponBase;
@@ -385,7 +413,8 @@ public class WeaponFullAutoBuilder : EditorWindow
             }
 
             // Check if Slide / Bolt
-            if (data.type == PartType.Slide || partName.Contains("Bolt") || partName.Contains("Slide"))
+            bool isSlide = (data.type == PartType.Slide || partName.Contains("Bolt") || partName.Contains("Slide") || (partName.StartsWith("Pistol_K") && partName.Contains("BarrelGuard")));
+            if (isSlide)
             {
                 var slideComp = AddIfMissing<WeaponSlide>(part);
                 slideComp.weaponBase = weaponBase;
@@ -394,7 +423,7 @@ public class WeaponFullAutoBuilder : EditorWindow
             }
 
             // Secondary Grip (Handguard / Grip)
-            if (partName.Contains("Grip") || partName.Contains("BarrelGuard") || data.type == PartType.Grip)
+            if (!isSlide && (partName.Contains("Grip") || partName.Contains("BarrelGuard") || data.type == PartType.Grip))
             {
                 var gripComp = AddIfMissing<WeaponSecondaryGrip>(part);
                 gripComp.weaponBase = weaponBase;
@@ -480,7 +509,7 @@ public class WeaponFullAutoBuilder : EditorWindow
     private static PartType DeterminePartType(string name)
     {
         if (name.Contains("Mag")) return PartType.Magazine;
-        if (name.Contains("Barrel")) return PartType.Barrel;
+        if (name.StartsWith("Pistol_K") && name.Contains("BarrelGuard")) return PartType.Slide;
         if (name.Contains("Bolt") || name.Contains("Slide")) return PartType.Slide;
         if (name.Contains("Stock")) return PartType.Stock;
         if (name.Contains("Sight") || name.Contains("Optic")) return PartType.Sight;
@@ -488,8 +517,84 @@ public class WeaponFullAutoBuilder : EditorWindow
         if (name.Contains("Receiver")) return PartType.Receiver;
         if (name.Contains("Trigger") || name.Contains("Tigger")) return PartType.Trigger;
         if (name.Contains("Rail")) return PartType.Rail;
+        if (name.Contains("Barrel")) return PartType.Barrel;
         if (name.Contains("Muzzle") || name.Contains("Brake")) return PartType.Muzzle;
         return PartType.Other;
+    }
+
+    private static void SetupRootWeaponInteractable(GameObject instance, WeaponBase weaponBase, Transform partsRoot)
+    {
+        // 1. Rigidbody
+        var rb = AddIfMissing<Rigidbody>(instance);
+        rb.mass = instance.name.StartsWith("Pistol") ? 1.2f : 2.8f;
+        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        rb.isKinematic = true;
+
+        // 2. Find receiver or grip part for attach point and grab bounds
+        Transform receiverPart = null;
+        foreach (Transform t in partsRoot)
+        {
+            if (t.name.Contains("Receiver_Down") || (receiverPart == null && t.name.Contains("Receiver")) || (receiverPart == null && t.name.Contains("Grip")))
+            {
+                receiverPart = t;
+                if (t.name.Contains("Receiver_Down")) break;
+            }
+        }
+
+        // 3. Root BoxCollider covering receiver/grip
+        var rootBox = AddIfMissing<BoxCollider>(instance);
+        if (receiverPart != null)
+        {
+            var pBox = receiverPart.GetComponent<BoxCollider>();
+            if (pBox != null)
+            {
+                rootBox.center = instance.transform.InverseTransformPoint(receiverPart.TransformPoint(pBox.center));
+                rootBox.size = pBox.size;
+            }
+            else
+            {
+                rootBox.center = instance.transform.InverseTransformPoint(receiverPart.position);
+                rootBox.size = new Vector3(0.08f, 0.2f, 0.25f);
+            }
+        }
+        else
+        {
+            rootBox.center = new Vector3(0, 0, 0.1f);
+            rootBox.size = new Vector3(0.08f, 0.2f, 0.4f);
+        }
+
+        // 4. Attach Point Transform
+        Transform attachPoint = instance.transform.Find("AttachPoint");
+        if (attachPoint == null)
+        {
+            GameObject aGo = new GameObject("AttachPoint");
+            aGo.transform.SetParent(instance.transform, false);
+            attachPoint = aGo.transform;
+        }
+        if (receiverPart != null)
+        {
+            attachPoint.position = receiverPart.position;
+            attachPoint.rotation = receiverPart.rotation;
+        }
+        else
+        {
+            attachPoint.localPosition = rootBox.center;
+            attachPoint.localRotation = Quaternion.identity;
+        }
+
+        // 5. XRGrabInteractable
+        var grab = AddIfMissing<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>(instance);
+        grab.attachTransform = attachPoint;
+        grab.movementType = UnityEngine.XR.Interaction.Toolkit.Interactables.XRBaseInteractable.MovementType.Instantaneous;
+        grab.throwOnDetach = true;
+
+        // CRITICAL: Explicitly register ONLY the root box collider so XRI doesn't register child part colliders to root
+        grab.colliders.Clear();
+        grab.colliders.Add(rootBox);
+
+        EditorUtility.SetDirty(grab);
+        EditorUtility.SetDirty(rb);
+        EditorUtility.SetDirty(rootBox);
     }
 
     private static void EnsureFolderExists(string folderPath)
